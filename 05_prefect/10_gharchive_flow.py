@@ -13,9 +13,20 @@ def count_events_for_hour(hour):
     # stream one hourly file and return {event_type: count}
     # use a Counter named "counts" and pull out the "type"
     # for each line in the stream
-    with requests.get(URL.format(hour=hour), stream=True) as r:
-        # do things
-        print("nothing")
+    counts = Counter()
+    try:
+        with requests.get(URL.format(hour=hour), stream=True, timeout=60) as r:
+            r.raise_for_status()
+            # decompress the gzip stream on the fly; each line is one JSON event
+            with gzip.GzipFile(fileobj=r.raw) as gz:
+                for line in gz:
+                    try:
+                        counts[json.loads(line)["type"]] += 1
+                    except (json.JSONDecodeError, KeyError):
+                        continue  # skip malformed lines / events missing "type"
+    except requests.RequestException as e:
+        print(f"hour {hour}: request failed: {e}")
+        raise  # re-raise so Prefect's retries kick in
     print(f"hour {hour}: {counts.total()} events")
     return dict(counts)
 
@@ -24,7 +35,12 @@ def count_events_for_hour(hour):
 def combine_counts(hourly_counts):
     # Total counts by type and order them
     # print those to screen and return them
-    pass
+    totals = Counter()
+    for hour_counts in hourly_counts:
+        totals.update(hour_counts)  # adds counts per type across hours
+    ordered = dict(totals.most_common())  # sorted by count, highest first
+    print(f"all hours: {totals.total()} events across {len(ordered)} types")
+    return ordered
 
 
 @flow(log_prints=True)

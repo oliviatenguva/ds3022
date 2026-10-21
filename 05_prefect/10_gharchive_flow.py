@@ -1,11 +1,18 @@
 import gzip
 import json
+import logging
 from collections import Counter
+from pathlib import Path
 import requests
 from prefect import flow, task
 
 
 URL = "https://data.gharchive.org/2025-01-01-{hour}.json.gz"
+
+# mirror all Prefect flow/task logs (including log_prints output) to a local file
+_handler = logging.FileHandler(Path(__file__).with_suffix(".log"))
+_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+logging.getLogger("prefect").addHandler(_handler)
 
 
 @task(retries=3)
